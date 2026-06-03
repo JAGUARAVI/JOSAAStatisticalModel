@@ -1,6 +1,6 @@
 """Weighted Linear Regression baseline — Python port of the client-side regression.ts logic.
 
-Used for apples-to-apples backtesting comparison against CatBoost.
+Used for apples-to-apples backtesting comparison against the Bayesian model.
 """
 import numpy as np
 from collections import defaultdict

@@ -6,12 +6,14 @@ readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
     "beautifulsoup4>=4.14.3",
-    "catboost>=1.2",
+    "arviz>=0.18",
     "html5lib>=1.1",
     "lxml>=6.1.1",
     "numpy>=1.26",
     "pandas>=3.0.3",
     "playwright>=1.60.0",
+    "pymc>=5.0",
+    "pytest>=8.0",
     "scikit-learn>=1.4",
     "scipy>=1.12",
 ]

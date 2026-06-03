@@ -22,7 +22,7 @@ def load_all_data(max_year=None):
     """Load all raw HTML data into a single DataFrame with human-readable columns.
     
     Returns DataFrame with columns: institute, program, quota, category, gender,
-    closing_rank, year, round, type
+    opening_rank, closing_rank, year, round, type
     
     Args:
         max_year: If set, only load data up to (and including) this year.
@@ -67,14 +67,15 @@ def load_all_data(max_year=None):
             else: continue
 
             df = df[~df["closing_rank"].astype(str).str.contains("P", na=False)]
+            df = df[~df["opening_rank"].astype(str).str.contains("P", na=False)]
+            df["opening_rank"] = pd.to_numeric(df["opening_rank"], errors="coerce")
             df["closing_rank"] = pd.to_numeric(df["closing_rank"], errors="coerce")
-            df = df.dropna(subset=["closing_rank"])
+            df = df.dropna(subset=["opening_rank", "closing_rank"])
+            df["opening_rank"] = df["opening_rank"].astype(int)
             df["closing_rank"] = df["closing_rank"].astype(int)
+            df = df[(df["opening_rank"] > 0) & (df["closing_rank"] > 0)]
             df["gender"] = df["gender"].fillna("Gender-Neutral")
-            
-            # Drop opening_rank
-            df = df.drop(columns=["opening_rank"], errors="ignore")
-            
+
             df["year"] = year
             df["round"] = round_num
             df["type"] = df["institute"].apply(categorize_institute)

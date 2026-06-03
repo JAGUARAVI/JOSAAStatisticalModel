@@ -211,7 +211,7 @@ function App() {
                 JoSAA <br /><span className="text-foreground-muted underline decoration-accent/30 underline-offset-8">Bae</span>
               </h1>
               <p className="text-foreground-subtle text-lg max-w-xl leading-relaxed font-light">
-                Precision-engineered admission insights utilizing <span className="text-foreground font-medium underline decoration-accent/30 underline-offset-4 cursor-help" title="Monte Carlo Simulations & Bayesian Analysis">client-side Bayesian inference</span>.
+                Precision-engineered admission insights utilizing <span className="text-foreground font-medium underline decoration-accent/30 underline-offset-4 cursor-help" title="Hierarchical Bayesian posterior forecasting">Bayesian posterior inference</span>.
               </p>
             </div>
 
@@ -375,7 +375,7 @@ function App() {
                   <span className="text-[10px] font-mono font-bold text-accent uppercase tracking-widest leading-none">Diagnostic Box</span>
                 </div>
                 <p className="text-[11px] leading-relaxed text-foreground-muted font-medium">
-                  The engine utilizes Parametric Bayesian Inference with <span className="text-foreground">±15% residual padding</span> for high-volatility years.
+                  The engine utilizes hierarchical Bayesian posterior forecasts with <span className="text-foreground">90% credible intervals</span> for high-volatility years.
                 </p>
                 <div className="pt-4 border-t border-border-default flex items-center justify-between">
                   <span className="text-[9px] font-mono text-foreground-muted uppercase">Confidence Level</span>
@@ -392,7 +392,7 @@ function App() {
                   <GraduationCap className="w-14 h-14 text-accent" />
                 </div>
                 <h3 className="text-2xl font-semibold text-foreground tracking-tight">Awaiting Initialization</h3>
-                <p className="text-foreground-muted text-center mt-3 max-w-sm font-light">Input your JEE All India Rank to begin the predictive Monte Carlo simulations.</p>
+                <p className="text-foreground-muted text-center mt-3 max-w-sm font-light">Input your JEE All India Rank to begin posterior admission analysis.</p>
                 <div className="mt-10 flex items-center gap-2 px-4 py-2 rounded-full bg-accent/5 border border-accent/10">
                   <span className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse" />
                   <span className="text-[9px] font-mono font-bold text-accent uppercase tracking-widest">Standing By</span>
@@ -754,8 +754,8 @@ function TechnicalSpecsModal({ onClose }: { onClose: () => void }) {
         <div className="grid md:grid-cols-2 gap-12">
           <div className="space-y-12">
             {[
-              { icon: Layers, title: "Bayesian Resampling", desc: "Prior distributions are updated using iterative resampling across 2,400+ seat nodes to minimize prediction bias." },
-              { icon: Trophy, title: "Outcome Verification", desc: "The engine is back-tested against JoSAA rounds from 2016–2025, achieving an R² stability coefficient of 0.94." }
+              { icon: Layers, title: "Hierarchical Posterior", desc: "Institute, program, category, quota, gender, and round effects share strength through partial pooling." },
+              { icon: Trophy, title: "Outcome Verification", desc: "The engine is back-tested against held-out JoSAA years with coverage and error metrics." }
             ].map((item, i) => (
               <div key={i} className="flex gap-6 group">
                 <div className="p-4 rounded-2xl bg-background-elevated border border-border-default h-fit group-hover:border-accent/40 group-hover:scale-110 transition-all duration-300 shadow-xl">
@@ -775,10 +775,10 @@ function TechnicalSpecsModal({ onClose }: { onClose: () => void }) {
             </div>
             <div className="space-y-6">
               {[
-                { label: "MC Iterations", value: "50,000 / Query" },
-                { label: "Residual Model", value: "Bayesian Gaussian" },
+                { label: "Posterior Basis", value: "PyMC Samples" },
+                { label: "Interval Model", value: "90% Credible" },
                 { label: "Update Latency", value: "< 2.0 ms" },
-                { label: "Analysis Engine", value: "Parametric In-Browser" }
+                { label: "Analysis Engine", value: "Static Posterior" }
               ].map((stat, i) => (
                 <div key={i} className="flex justify-between items-end border-b border-white/[0.03] pb-4">
                   <span className="text-[11px] text-foreground-muted font-medium">{stat.label}</span>
@@ -1151,7 +1151,7 @@ function ResultCard({ p, viewMode, isExpanded, toggle, userRank, onSimStart, onS
                  {distribution && (
                   <div className="space-y-4 pt-4">
                     <div className="flex justify-between items-center">
-                      <span className="text-[10px] font-mono text-foreground-muted uppercase tracking-widest">Monte Carlo Distribution</span>
+                      <span className="text-[10px] font-mono text-foreground-muted uppercase tracking-widest">Posterior Distribution</span>
                       <div className="group/info relative">
                         <Info className="w-3 h-3 text-foreground-muted cursor-help" />
                         <div className="absolute bottom-full right-0 mb-2 w-56 p-4 bg-background-elevated/95 backdrop-blur-2xl border border-white/20 rounded-2xl opacity-0 group-hover/info:opacity-100 transition-opacity z-[70] text-[10px] text-foreground-muted leading-relaxed shadow-[0_20px_50px_rgba(0,0,0,0.9)]">

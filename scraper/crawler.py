@@ -1,4 +1,5 @@
 import asyncio
+import argparse
 import os
 from playwright.async_api import async_playwright
 
@@ -281,10 +282,89 @@ async def scrape_josaa():
         print(f"   ✅ {stats['success']} saved  |  ⏭ {stats['skipped']} skipped  |  ❌ {stats['failed']} failed")
         print(f"{'='*60}")
 
+async def scrape_current_seat_matrix():
+    """Best-effort scrape of the currently available JoSAA seat matrix."""
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(headless=True)
+        context = await browser.new_context(
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
+        )
+        page = await context.new_page()
+
+        url = "https://josaa.admissions.nic.in/applicant/seatmatrix/seatmatrixinfo.aspx"
+        print(f"🌐 Navigating to {url}...")
+        await page.goto(url, wait_until="networkidle")
+
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        seat_dir = os.path.join(base_dir, "seat_data")
+        os.makedirs(seat_dir, exist_ok=True)
+
+        year_text = await page.evaluate("""() => {
+            const text = document.body.innerText || '';
+            const match = text.match(/20\\d{2}/);
+            return match ? match[0] : String(new Date().getFullYear());
+        }""")
+
+        for sel_id, next_id in [
+            ("ctl00_ContentPlaceHolder1_ddlInstype", "ctl00_ContentPlaceHolder1_ddlInstitute"),
+            ("ctl00_ContentPlaceHolder1_ddlInstitute", "ctl00_ContentPlaceHolder1_ddlBranch"),
+            ("ctl00_ContentPlaceHolder1_ddlBranch", "ctl00_ContentPlaceHolder1_ddlSeatType"),
+        ]:
+            try:
+                await wait_for_options(page, sel_id, timeout_ms=8000)
+                await select_and_wait(page, sel_id, "ALL")
+                await wait_for_options(page, next_id, timeout_ms=8000)
+            except Exception:
+                print(f"  Could not drive select {sel_id}; continuing best-effort.")
+
+        try:
+            await page.evaluate("""() => {
+                const el = document.getElementById("ctl00_ContentPlaceHolder1_ddlSeatType");
+                if (el) el.value = "ALL";
+            }""")
+            await page.locator("#ctl00_ContentPlaceHolder1_btnSubmit").click(timeout=15000)
+            await page.wait_for_load_state("networkidle", timeout=30000)
+        except Exception as exc:
+            print(f"  Submit did not complete cleanly: {exc}")
+
+        table_html = await page.evaluate("""() => {
+            const tables = Array.from(document.querySelectorAll('table'));
+            if (!tables.length) return '';
+            tables.sort((a, b) => b.querySelectorAll('tr').length - a.querySelectorAll('tr').length);
+            return tables[0].outerHTML;
+        }""")
+
+        if not table_html:
+            await browser.close()
+            raise RuntimeError("No seat matrix table found on the current JoSAA page.")
+
+        html_path = os.path.join(seat_dir, f"{year_text}_seat_matrix.html")
+        with open(html_path, "w") as f:
+            f.write(table_html)
+        print(f"✅ Saved {os.path.basename(html_path)}")
+
+        try:
+            from seats import normalize_saved_seat_html
+            normalize_saved_seat_html(seat_dir)
+        except Exception as exc:
+            print(f"  Seat normalization failed; raw HTML is still saved: {exc}")
+
+        await browser.close()
+
 def glob_files(raw_data_dir, year_label):
     """Get all HTML files for a specific year."""
     import glob
     return glob.glob(os.path.join(raw_data_dir, f"{year_label}_round_*.html"))
 
 if __name__ == "__main__":
-    asyncio.run(scrape_josaa())
+    parser = argparse.ArgumentParser(description="Scrape JoSAA rank and optional seat matrix data")
+    parser.add_argument("--kind", choices=["ranks", "seats", "all"], default="ranks")
+    args = parser.parse_args()
+
+    if args.kind == "ranks":
+        asyncio.run(scrape_josaa())
+    elif args.kind == "seats":
+        asyncio.run(scrape_current_seat_matrix())
+    else:
+        asyncio.run(scrape_josaa())
+        asyncio.run(scrape_current_seat_matrix())
