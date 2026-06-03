@@ -1,12 +1,13 @@
-# JoSAA Rank Analyzer: Data & ML Pipeline Workflow
+# 🔬 JoSAA Forensics: Data & ML Pipeline Workflow
 
-This document outlines the end-to-end process for updating the admission predictions, from scraping historical data to exporting the final CatBoost-powered probability matrix.
+This document outlines the end-to-end process for updating admission predictions, from scraping raw historical tables to exporting the final CatBoost-powered probability matrix.
 
-## Core Stack
-- **Data Engineering**: Python 3.10+ (Scrapy, Pandas)
-- **ML Engine**: CatBoost (Gradient Boosting on Decision Trees)
-- **Uncertainty**: Bayesian Residual Analysis + Monte Carlo Simulation (10k iterations)
-- **Frontend**: React + TypeScript (Static lookup)
+## 🛠️ Core Stack
+- **Data Collection**: [Playwright](https://playwright.dev/) + Python (Headless automation for JoSAA portal)
+- **Data Cleaning**: Python 3.13+ (Pandas, StringIO)
+- **ML Engine**: [CatBoost](https://catboost.ai/) (Gradient Boosting on Decision Trees)
+- **Probabilistic Modeling**: Bayesian Residual Analysis + Monte Carlo Simulation (10k iterations)
+- **Frontend**: React 19 + TypeScript 5 (In-browser Bayesian failover & static lookup)
 
 ---
 
@@ -22,36 +23,35 @@ uv sync
 pip install -r requirements.txt
 ```
 
-### 2. Scrape/Update Historical Data
-If new JoSAA rounds are released or you need to re-fetch data:
+### 2. Scrape Historical Data
+If new JoSAA rounds are released or you need to re-fetch historical tables directly from the source:
 ```bash
-# This will fetch all data from 2016-2025 and save to app/public/data/ranks.json
+# This uses Playwright to navigate the JoSAA archive and save HTML tables to raw_data/
+python crawler.py
+```
+*Note: The crawler implements `wait_for_stable_table` logic to ensure 100% data capture from dynamic ASP.NET pages.*
+
+### 3. Normalize & Clean Data
+Convert the raw HTML tables into the optimized JSON format used by the frontend:
+```bash
+# This parses raw_data/*.html and exports app/public/data/ranks.json + metadata.json
 python cleaner.py
 ```
-*Note: `cleaner.py` now includes the `load_all_data()` logic to parse HTML tables from the `/data/` subdirectory.*
 
-### 3. Feature Engineering & Training
+### 4. Feature Engineering & ML Training
 Run the ML pipeline to train the CatBoost model and generate probabilistic forecasts:
 ```bash
-# Trains model, runs 10k Monte Carlo simulations, and exports predictions.json
+# Trains the regressor, computes Bayesian residuals, and runs 10k Monte Carlo simulations
 python -m ml.train
 ```
-**What happens here?**
-- Loads historical ranks from `ranks.json`.
-- Computes lag features, rolling statistics, and trend slopes (`ml/features.py`).
-- Trains a `CatBoostRegressor` with Bayesian residual modeling.
-- Runs 10,000 simulations per institute-program-category-gender combination.
-- **Output**: `app/public/data/predictions.json`
+**Pipeline Details**:
+- **Feature Extraction**: Computes lag features, rolling statistics, and trend slopes (`ml/features.py`).
+- **Bayesian Modeling**: Trains a `CatBoostRegressor` and models prediction error (residuals).
+- **Simulation**: Conducts 10,000 simulations per combination to determine the probabilistic frontier.
+- **Output**: Generates `app/public/data/predictions.json`.
 
-### 4. Backtesting (Optional)
-To verify model accuracy against historical "future" years (e.g., predicting 2025 using 2016-2024):
-```bash
-python -m ml.backtest
-```
-This ensures the model maintains low calibration error before production.
-
-### 5. Frontend Build
-Once `predictions.json` is updated, build the static site:
+### 5. Deployment
+Build the static frontend once the data files are updated:
 ```bash
 cd ../app
 npm run build
@@ -59,17 +59,18 @@ npm run build
 
 ---
 
-## 🛠 Troubleshooting
+## 🛠️ Troubleshooting & Tuning
 
-- **Memory Issues**: If the training process crashes, reduce `N_SIMULATIONS` in `ml/train.py` (currently set to 10,000).
-- **Missing Clusters**: If a new institute is added to JoSAA, ensure `cleaner.py` and the scraper handle its naming convention consistently with previous years to avoid feature gaps.
-- **Fallbacks**: If `predictions.json` is missing or fails to load in the browser, the frontend automatically falls back to the **Weighted Linear Regression (WLR)** engine.
+- **Simulation Volatility**: If prediction probabilities feel too optimistic, increase the noise floor in `ml/train.py`.
+- **System Memory**: If training crashes, reduce `N_SIMULATIONS` in `ml/train.py` (default: 10,000).
+- **GitHub Push Errors**: The `.json` files in `app/public/data/` are ignored by Git to avoid exceeding file size limits. Ensure these are uploaded to a CDN or served locally during deployment.
+- **Failover**: If `predictions.json` is missing, the React frontend automatically triggers an in-browser **Weighted Linear Regression (WLR)** engine.
 
 ---
 
-## 📊 Model Methodology
-The engine treats admission prediction as a **Probabilistic Forecasting** problem:
-1. **Point Estimate**: CatBoost predicts the most likely closing rank.
-2. **Distribution**: Bayesian residuals define a normal distribution around that estimate.
-3. **Monte Carlo**: We sample 10,000 points from this distribution to see how often the user's rank "fits" inside the cutoff.
-4. **Rounding**: Probabilities are computed per round to account for late-stage volatility.
+## 📊 Methodology
+The engine treats admission as a **Probabilistic Forecasting** problem:
+1. **Point Estimate**: CatBoost predicts the most likely closing rank based on historical shifts.
+2. **Distribution**: Bayesian analysis defines a normal distribution around that estimate based on model residuals.
+3. **Monte Carlo Sampling**: We sample 10,000 points from this distribution to calculate the percentage chance of your rank falling inside the expected cutoff.
+4. **Temporal Awareness**: Probabilities are computed per round to account for the gradual "thinning" of the seat pool.
