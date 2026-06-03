@@ -1,4 +1,4 @@
-# JOSAA Rank Analyzer & Predictor – Handoff Document
+# 🏛️ JoSAA Forensics – Technical Architecture
 
 ## Project Vision
 

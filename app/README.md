@@ -1,73 +1,40 @@
-# React + TypeScript + Vite
+# 📱 JoSAA Forensics - Frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+This is the React-based frontend for **JoSAA Forensics**. It provides a high-performance, interactive dashboard for JEE rank analysis.
 
-Currently, two official plugins are available:
+## 🚀 Getting Started
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+1. **Install Dependencies**:
+   ```bash
+   npm install
+   ```
 
-## React Compiler
+2. **Start Development Server**:
+   ```bash
+   npm run dev
+   ```
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+3. **Production Build**:
+   ```bash
+   npm run build
+   ```
 
-## Expanding the ESLint configuration
+## 🏗 Key Components
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+- **`App.tsx`**: The main application logic, state management, and primary UI layout.
+- **`lib/regression.ts`**: The client-side fallback prediction engine using weighted linear regression.
+- **`index.css`**: The core design system, colors, and animations.
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+## 📊 Data Dependencies
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+The frontend expects the following files in `public/data/`:
+- `ranks.json`: Historical opening/closing ranks (2016-2025).
+- `metadata.json`: Category, Gender, and Round mappings.
+- `predictions.json`: ML-generated probability matrices from the Python pipeline.
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+## 🎨 UI Features
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
-
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+- **Theme Toggle**: Switch between Dark and Light modes.
+- **Search & Filters**: Real-time filtering by institute, program, category, and match status (Safe/Target/Dream).
+- **Monte Carlo Charts**: Detailed rank distribution visualizations.
+- **Mobile Responsive**: Fully optimized for mobile counseling sessions.
