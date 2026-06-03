@@ -139,6 +139,16 @@ function App() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
+  // Dynamic SEO Title
+  useEffect(() => {
+    if (filteredPredictions.length > 0 && rank) {
+      document.title = `Rank ${rank} Analysis — JoSAABae`;
+    } else {
+      document.title = "JoSAABae — JoSAA Bayesian Rank Analyzer";
+    }
+  }, [filteredPredictions.length, rank]);
+
+
   const categories = ['OPEN', 'OBC-NCL', 'SC', 'ST', 'EWS', 'OPEN (PwD)', 'OBC-NCL (PwD)', 'SC (PwD)', 'ST (PwD)', 'EWS (PwD)'];
   const instTypes = ['IIT', 'NIT', 'IIIT', 'GFTI'];
   const classifications = ['Safe', 'Likely', 'Competitive', 'Dream', 'Unlikely'];

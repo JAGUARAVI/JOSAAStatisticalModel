@@ -7,6 +7,9 @@
 [![Python](https://img.shields.io/badge/Python-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
 [![ML](https://img.shields.io/badge/ML-CatBoost-ff69b4?style=for-the-badge)](https://catboost.ai/)
 
+**🔗 Live Demo: [https://josaabae.netlify.app/](https://josaabae.netlify.app/)**
+
+
 **JoSAABae** is a premium, open-source diagnostic suite designed to help JEE Main and Advanced students navigate the complexities of JoSAA/CSAB counseling. Built on the pun of "JoSAA Bayesian", it uses **Bayesian Machine Learning** and **Monte Carlo Simulations** to provide probabilistic admission insights.
 
 ---
