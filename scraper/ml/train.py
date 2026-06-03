@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import pickle
 import sys
 from dataclasses import dataclass
 from typing import Any
@@ -39,6 +40,12 @@ class BayesianFit:
     feature_stds: dict[str, float]
     encoders: dict[str, dict[str, int]]
     fit_method: str
+    validation_year: int | None = None
+    validation_mae: float | None = None
+    validation_rmse: float | None = None
+    checkpoint_steps: int | None = None
+    checkpoint_path: str | None = None
+    checkpoint_count: int | None = None
 
 
 def _rank_thresholds() -> list[int]:
@@ -86,6 +93,225 @@ def _training_frame(df_features: pd.DataFrame) -> pd.DataFrame:
     if train_df.empty:
         raise ValueError("No training rows available; scrape OR/CR rank data before training.")
     return train_df
+
+
+def _split_train_validation(
+    train_df: pd.DataFrame,
+    *,
+    target_year: int,
+    validation_year: int | None = None,
+    validation_fraction: float = 0.15,
+) -> tuple[pd.DataFrame, pd.DataFrame, str, int | None]:
+    """Split observed rows into train/validation sets for checkpoint selection."""
+    observed = train_df.copy()
+    observed_years = sorted(observed["year"].dropna().astype(int).unique().tolist())
+    candidate_years = [year for year in observed_years if year < target_year]
+
+    if validation_year is None and len(candidate_years) >= 2:
+        validation_year = candidate_years[-1]
+
+    if validation_year is not None:
+        val_df = observed[observed["year"] == validation_year].copy()
+        train_split = observed[observed["year"] != validation_year].copy()
+        if not train_split.empty and not val_df.empty:
+            return train_split, val_df, f"year {validation_year}", validation_year
+
+    rng = np.random.default_rng(RANDOM_SEED)
+    perm = rng.permutation(len(observed))
+    val_size = max(1, int(round(len(observed) * validation_fraction)))
+    if val_size >= len(observed):
+        val_size = 1
+    val_idx = perm[:val_size]
+    train_idx = perm[val_size:]
+    if len(train_idx) == 0:
+        train_idx = perm[:-1]
+        val_idx = perm[-1:]
+    split_label = f"row-split {len(train_idx)}:{len(val_idx)}"
+    return observed.iloc[train_idx].copy(), observed.iloc[val_idx].copy(), split_label, None
+
+
+def _snapshot_approximation(approx: Any) -> list[np.ndarray]:
+    """Capture the current variational parameters so we can restore a checkpoint."""
+    return [np.array(param.get_value(), copy=True) for param in approx.params]
+
+
+def _restore_approximation(approx: Any, snapshot: list[np.ndarray]) -> None:
+    for param, value in zip(approx.params, snapshot):
+        param.set_value(np.array(value, copy=True))
+
+
+def _checkpoint_dir(base_dir: str) -> str:
+    return os.path.join(base_dir, "ml", "checkpoints")
+
+
+def _validation_metrics(fit: BayesianFit, val_df: pd.DataFrame) -> dict[str, float | int]:
+    if val_df.empty:
+        return {"n": 0, "mae": float("inf"), "rmse": float("inf")}
+
+    rank_samples = _predictive_rank_samples(fit, val_df, include_noise=False)
+    predicted = np.median(rank_samples, axis=0)
+    actual = val_df["closing_rank"].to_numpy(dtype="float64")
+    errors = actual - predicted
+    return {
+        "n": int(len(val_df)),
+        "mae": float(np.mean(np.abs(errors))),
+        "rmse": float(np.sqrt(np.mean(errors ** 2))),
+    }
+
+
+def _fit_checkpointed_advi(
+    model: Any,
+    *,
+    train_df: pd.DataFrame,
+    val_df: pd.DataFrame,
+    feature_cols: list[str],
+    feature_means: dict[str, float],
+    feature_stds: dict[str, float],
+    encoders: dict[str, dict[str, int]],
+    draws: int,
+    advi_steps: int,
+    checkpoint_steps: int,
+    checkpoint_dir: str,
+) -> BayesianFit:
+    import pymc as pm
+
+    os.makedirs(checkpoint_dir, exist_ok=True)
+    advi = pm.ADVI(model=model, random_seed=RANDOM_SEED)
+    checkpoint_steps = max(1, min(checkpoint_steps, advi_steps))
+    checkpoint_eval_draws = max(50, min(250, draws // 4 if draws > 1 else 1))
+    n_checkpoints = int(np.ceil(advi_steps / checkpoint_steps))
+    manifest: dict[str, Any] = {
+        "fit_method": "advi-checkpointed",
+        "checkpoint_steps": checkpoint_steps,
+        "advi_steps": advi_steps,
+        "train_rows": int(len(train_df)),
+        "validation_rows": int(len(val_df)),
+        "candidates": [],
+    }
+
+    best_snapshot: list[np.ndarray] | None = None
+    best_idata: Any | None = None
+    best_metrics: dict[str, float | int] | None = None
+    best_step = 0
+    best_path: str | None = None
+    completed = 0
+
+    for checkpoint_idx in range(n_checkpoints):
+        chunk = min(checkpoint_steps, advi_steps - completed)
+        label = "Fitting" if checkpoint_idx == 0 else "Refining"
+        print(f"  {label} checkpoint {checkpoint_idx + 1}/{n_checkpoints} ({chunk} steps)...")
+        if checkpoint_idx == 0:
+            advi.fit(
+                chunk,
+                progressbar=True,
+                obj_optimizer=pm.adam(learning_rate=1e-3),
+            )
+        else:
+            advi.refine(chunk, progressbar=True)
+        completed += chunk
+
+        snapshot = _snapshot_approximation(advi.approx)
+        with model:
+            checkpoint_idata = advi.approx.sample(draws=checkpoint_eval_draws, random_seed=RANDOM_SEED)
+        checkpoint_fit = BayesianFit(
+            idata=checkpoint_idata,
+            feature_cols=feature_cols,
+            feature_means=feature_means,
+            feature_stds=feature_stds,
+            encoders=encoders,
+            fit_method="advi-checkpointed",
+            checkpoint_steps=checkpoint_steps,
+        )
+        metrics = _validation_metrics(checkpoint_fit, val_df)
+        checkpoint_path = os.path.join(checkpoint_dir, f"advi_step_{completed:05d}.nc")
+        checkpoint_path = _save_inferencedata(checkpoint_path, checkpoint_idata)
+
+        candidate = {
+            "step": completed,
+            "path": checkpoint_path,
+            "validation_n": metrics["n"],
+            "validation_mae": metrics["mae"],
+            "validation_rmse": metrics["rmse"],
+        }
+        manifest["candidates"].append(candidate)
+        print(
+            f"    val MAE={metrics['mae']:.2f}, RMSE={metrics['rmse']:.2f}, "
+            f"saved {os.path.basename(checkpoint_path)}"
+        )
+
+        if best_metrics is None or metrics["mae"] < best_metrics["mae"]:
+            best_snapshot = snapshot
+            best_idata = checkpoint_idata
+            best_metrics = metrics
+            best_step = completed
+            best_path = checkpoint_path
+
+    if best_snapshot is not None:
+        _restore_approximation(advi.approx, best_snapshot)
+        with model:
+            final_idata = advi.approx.sample(draws=draws, random_seed=RANDOM_SEED)
+    elif best_idata is not None:
+        final_idata = best_idata
+    else:
+        with model:
+            final_idata = advi.approx.sample(draws=draws, random_seed=RANDOM_SEED)
+
+    manifest["best"] = {
+        "step": best_step,
+        "path": best_path,
+        "validation_mae": None if best_metrics is None else best_metrics["mae"],
+        "validation_rmse": None if best_metrics is None else best_metrics["rmse"],
+    }
+    _write_json(os.path.join(checkpoint_dir, "advi_manifest.json"), manifest)
+
+    return BayesianFit(
+        idata=final_idata,
+        feature_cols=feature_cols,
+        feature_means=feature_means,
+        feature_stds=feature_stds,
+        encoders=encoders,
+        fit_method="advi-checkpointed",
+        validation_year=None,
+        validation_mae=None if best_metrics is None else float(best_metrics["mae"]),
+        validation_rmse=None if best_metrics is None else float(best_metrics["rmse"]),
+        checkpoint_steps=checkpoint_steps,
+        checkpoint_path=best_path,
+        checkpoint_count=n_checkpoints,
+    )
+
+
+def _fit_simple_advi(
+    model: Any,
+    *,
+    feature_cols: list[str],
+    feature_means: dict[str, float],
+    feature_stds: dict[str, float],
+    encoders: dict[str, dict[str, int]],
+    draws: int,
+    advi_steps: int,
+    fit_method: str,
+) -> BayesianFit:
+    import pymc as pm
+
+    with model:
+        print(f"  Fitting {fit_method} posterior ({advi_steps} steps)...")
+        approx = pm.fit(
+            n=advi_steps,
+            method="advi",
+            random_seed=RANDOM_SEED,
+            progressbar=True,
+            obj_optimizer=pm.adam(learning_rate=1e-3),
+        )
+        idata = approx.sample(draws=draws, random_seed=RANDOM_SEED)
+
+    return BayesianFit(
+        idata=idata,
+        feature_cols=feature_cols,
+        feature_means=feature_means,
+        feature_stds=feature_stds,
+        encoders=encoders,
+        fit_method=fit_method,
+    )
 
 
 def build_josaa_model(
@@ -202,51 +428,68 @@ def train_model(
     df_features: pd.DataFrame,
     *,
     quick: bool = False,
+    checkpoint_advi: bool = False,
     draws: int = 1000,
     tune: int = 1000,
     chains: int = 2,
     advi_steps: int = 8000,
+    checkpoint_steps: int = 2000,
+    validation_year: int | None = None,
+    base_dir: str | None = None,
 ) -> BayesianFit:
     """Fit the PyMC model and return posterior artifacts."""
     import pymc as pm
 
-    train_df = _training_frame(df_features)
+    observed_df = _training_frame(df_features)
     feature_cols = get_model_feature_columns()
-    feature_means, feature_stds = _compute_feature_stats(train_df, feature_cols)
-    x_train = _standardize(train_df, feature_cols, feature_means, feature_stds)
     encoders = df_features.attrs.get("encoders")
     if not encoders:
         raise ValueError("Feature frame is missing deterministic encoders.")
 
+    train_df = observed_df
+    val_df = pd.DataFrame()
+    validation_label = None
+    validation_year_used: int | None = None
+    if checkpoint_advi or quick:
+        train_df, val_df, validation_label, validation_year_used = _split_train_validation(
+            observed_df,
+            target_year=int(df_features["year"].max()),
+            validation_year=validation_year,
+        )
+
+    feature_means, feature_stds = _compute_feature_stats(train_df, feature_cols)
+    x_train = _standardize(train_df, feature_cols, feature_means, feature_stds)
     coords = _coords_from_encoders(encoders, len(train_df), feature_cols)
 
     print(f"  Training samples: {len(train_df)}")
+    if validation_label is not None:
+        print(f"  Validation split: {validation_label} ({len(val_df)} rows)")
     print(f"  Institutes: {len(coords['institute'])}, Programs: {len(coords['program'])}")
     print(f"  Covariates: {len(feature_cols)}")
     print("  Target: log1p(closing_rank)")
-
-    def fit_advi(model: Any, label: str) -> Any:
-        with model:
-            print(f"  Fitting {label} ADVI posterior ({advi_steps} steps)...")
-            approx = pm.fit(
-                n=advi_steps,
-                method="advi",
-                random_seed=RANDOM_SEED,
-                progressbar=True,
-                obj_optimizer=pm.adam(learning_rate=1e-3),
-            )
-            return approx.sample(draws=draws, random_seed=RANDOM_SEED)
 
     model = build_josaa_model(
         train_df,
         x_train,
         coords,
-        use_minibatch=quick,
+        use_minibatch=quick or checkpoint_advi,
         minibatch_size=4096,
     )
-    if quick:
-        idata = fit_advi(model, "quick")
-        fit_method = "advi"
+    if quick or checkpoint_advi:
+        checkpoint_root = _checkpoint_dir(base_dir or os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        fit = _fit_checkpointed_advi(
+            model,
+            train_df=train_df,
+            val_df=val_df,
+            feature_cols=feature_cols,
+            feature_means=feature_means,
+            feature_stds=feature_stds,
+            encoders=encoders,
+            draws=draws,
+            advi_steps=advi_steps,
+            checkpoint_steps=checkpoint_steps,
+            checkpoint_dir=checkpoint_root,
+        )
     else:
         print(f"  Sampling NUTS posterior ({chains} chains, {draws} draws, {tune} tune)...")
         try:
@@ -271,17 +514,32 @@ def train_model(
                 use_minibatch=True,
                 minibatch_size=4096,
             )
-            idata = fit_advi(fallback_model, "fallback")
-            fit_method = "advi-fallback"
+            fit = _fit_simple_advi(
+                fallback_model,
+                feature_cols=feature_cols,
+                feature_means=feature_means,
+                feature_stds=feature_stds,
+                encoders=encoders,
+                draws=draws,
+                advi_steps=advi_steps,
+                fit_method="advi-fallback",
+            )
+            validation_year_used = None
 
-    return BayesianFit(
-        idata=idata,
-        feature_cols=feature_cols,
-        feature_means=feature_means,
-        feature_stds=feature_stds,
-        encoders=encoders,
-        fit_method=fit_method,
-    )
+        if not isinstance(fit, BayesianFit):
+            fit = BayesianFit(
+                idata=idata,
+                feature_cols=feature_cols,
+                feature_means=feature_means,
+                feature_stds=feature_stds,
+                encoders=encoders,
+                fit_method=fit_method,
+            )
+
+    if validation_label is not None and fit.validation_year is None:
+        fit.validation_year = validation_year_used
+
+    return fit
 
 
 def _posterior_samples(idata: Any, name: str) -> np.ndarray:
@@ -461,6 +719,20 @@ def _write_json(path: str, data: Any) -> None:
         json.dump(data, f)
 
 
+def _save_inferencedata(path: str, idata: Any) -> str:
+    """Persist an InferenceData object, falling back to pickle when needed."""
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    try:
+        idata.to_netcdf(path)
+        return path
+    except Exception as exc:
+        fallback_path = os.path.splitext(path)[0] + ".pkl"
+        with open(fallback_path, "wb") as f:
+            pickle.dump(idata, f)
+        print(f"  NetCDF save failed; wrote pickle checkpoint instead: {exc}")
+        return fallback_path
+
+
 def save_artifacts(
     fit: BayesianFit,
     predictions: list[dict[str, Any]],
@@ -478,6 +750,12 @@ def save_artifacts(
         "model": "pymc-hierarchical-lognormal",
         "fit_method": fit.fit_method,
         "confidence_level": CONFIDENCE_LEVEL,
+        "validation_year": fit.validation_year,
+        "validation_mae": fit.validation_mae,
+        "validation_rmse": fit.validation_rmse,
+        "checkpoint_steps": fit.checkpoint_steps,
+        "checkpoint_path": fit.checkpoint_path,
+        "checkpoint_count": fit.checkpoint_count,
         "rank_thresholds": _rank_thresholds(),
         "predictions": predictions,
     }
@@ -491,8 +769,8 @@ def save_artifacts(
     })
 
     try:
-        fit.idata.to_netcdf(posterior_path)
-        print(f"  Saved posterior trace: {posterior_path}")
+        saved_path = _save_inferencedata(posterior_path, fit.idata)
+        print(f"  Saved posterior trace: {saved_path}")
     except Exception as exc:
         print(f"  Could not save posterior trace: {exc}")
 
@@ -504,6 +782,23 @@ def main() -> None:
     parser.add_argument("--validate", action="store_true", help="Validate existing predictions.json")
     parser.add_argument("--max-year", type=int, default=None, help="Max training year")
     parser.add_argument("--target-year", type=int, default=2026, help="Year to predict")
+    parser.add_argument(
+        "--validation-year",
+        type=int,
+        default=None,
+        help="Hold out this historical year for checkpoint selection",
+    )
+    parser.add_argument(
+        "--checkpoint-advi",
+        action="store_true",
+        help="Use checkpointed ADVI instead of NUTS so the best checkpoint can be selected",
+    )
+    parser.add_argument(
+        "--checkpoint-steps",
+        type=int,
+        default=2000,
+        help="ADVI steps between saved checkpoints",
+    )
     parser.add_argument("--quick", action="store_true", help="Use ADVI for a fast smoke-test posterior")
     parser.add_argument("--draws", type=int, default=1000, help="Posterior draws")
     parser.add_argument("--tune", type=int, default=1000, help="NUTS tuning steps")
@@ -537,10 +832,14 @@ def main() -> None:
     fit = train_model(
         df_features,
         quick=args.quick,
+        checkpoint_advi=args.checkpoint_advi,
         draws=args.draws,
         tune=args.tune,
         chains=args.chains,
         advi_steps=args.advi_steps,
+        checkpoint_steps=args.checkpoint_steps,
+        validation_year=args.validation_year,
+        base_dir=base_dir,
     )
 
     print(f"\nGenerating predictions for {args.target_year}...")
