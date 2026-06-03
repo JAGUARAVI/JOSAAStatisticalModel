@@ -1,4 +1,4 @@
-# 🔬 JoSAA Forensics: Data & ML Pipeline Workflow
+# 🔬 JoSAABae: JoSAA Bayesian Pipeline Workflow
 
 This document outlines the end-to-end process for updating admission predictions, from scraping raw historical tables to exporting the final CatBoost-powered probability matrix.
 

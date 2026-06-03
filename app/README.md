@@ -1,6 +1,6 @@
-# 📱 JoSAA Forensics - Frontend
+# 📱 JoSAABae - Frontend (JoSAA Bayesian)
 
-This is the React-based frontend for **JoSAA Forensics**. It provides a high-performance, interactive dashboard for JEE rank analysis.
+This is the React-based frontend for **JoSAABae**. It provides a high-performance, interactive dashboard for JEE rank analysis.
 
 ## 🚀 Getting Started
 

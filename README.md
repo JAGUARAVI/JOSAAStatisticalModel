@@ -1,13 +1,13 @@
-# 🔍 JoSAA Forensics
+# 🔍 JoSAABae
 
-### **Advanced Admission Analytics & ML-Powered Rank Prediction for JEE Aspirants**
+### **Advanced Admission Analytics & JoSAA Bayesian Rank Prediction**
 
 [![React](https://img.shields.io/badge/React-20232A?style=for-the-badge&logo=react&logoColor=61DAFB)](https://reactjs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?style=for-the-badge&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![Python](https://img.shields.io/badge/Python-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
 [![ML](https://img.shields.io/badge/ML-CatBoost-ff69b4?style=for-the-badge)](https://catboost.ai/)
 
-**JoSAA Forensics** is a premium, open-source diagnostic suite designed to help JEE Main and Advanced students navigate the complexities of JoSAA/CSAB counseling. Unlike simple lookup tools, it uses **Bayesian Machine Learning** and **Monte Carlo Simulations** to provide probabilistic admission insights.
+**JoSAABae** is a premium, open-source diagnostic suite designed to help JEE Main and Advanced students navigate the complexities of JoSAA/CSAB counseling. Built on the pun of "JoSAA Bayesian", it uses **Bayesian Machine Learning** and **Monte Carlo Simulations** to provide probabilistic admission insights.
 
 ---
 
@@ -26,7 +26,7 @@
 
 ```bash
 ├── app/              # React + Vite Frontend (TypeScript, Tailwind CSS)
-├── scraper/          # Python Scraper & ML Pipeline (Playwright, CatBoost)
+├── scraper/          # 🐍 JoSAABae - JoSAA Bayesian Pipeline (Playwright, CatBoost)
 ├── ML_WORKFLOW.md    # Detailed guide on the ML training & data pipeline
 └── ARCHITECTURE.md   # System design and technical handoff documentation
 ```
@@ -64,7 +64,7 @@ python -m ml.train    # Train ML models and export predictions.json
 
 ## 📜 Legal & Disclaimer
 
-*JoSAA Forensics is an independent community project and is NOT affiliated with JoSAA, CSAB, or any IIT/NIT. Predictions are probabilistic and should be used for informational purposes only.*
+*JoSAABae is an independent community project and is NOT affiliated with JoSAA, CSAB, or any IIT/NIT. Predictions are probabilistic and should be used for informational purposes only.*
 
 ---
 

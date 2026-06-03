@@ -1,4 +1,4 @@
-# 🏛️ JoSAA Forensics – Technical Architecture
+# 🏛️ JoSAABae – Technical Architecture (JoSAA Bayesian)
 
 ## Project Vision
 

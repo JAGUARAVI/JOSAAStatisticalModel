@@ -198,7 +198,7 @@ function App() {
                 <span className="text-[9px] font-mono font-bold tracking-widest text-accent uppercase">Parametric Core v1.0.0</span>
               </div>
               <h1 className="text-6xl md:text-8xl font-semibold tracking-[-0.04em] leading-[0.85] text-gradient-white">
-                Admission <br /><span className="text-foreground-muted">Forensics</span>
+                JoSAA <br /><span className="text-foreground-muted underline decoration-accent/30 underline-offset-8">Bae</span>
               </h1>
               <p className="text-foreground-subtle text-lg max-w-xl leading-relaxed font-light">
                 Precision-engineered admission insights utilizing <span className="text-foreground font-medium underline decoration-accent/30 underline-offset-4 cursor-help" title="Monte Carlo Simulations & Bayesian Analysis">client-side Bayesian inference</span>.
@@ -422,7 +422,7 @@ function App() {
                 <div className="p-2 rounded-xl bg-accent/10 border border-accent/20">
                   <Cpu className="w-5 h-5 text-accent" />
                 </div>
-                <span className="text-xl font-bold tracking-tight text-foreground">JOSAA Forensics</span>
+                <span className="text-xl font-bold tracking-tight text-foreground italic">JoSAABae</span>
               </div>
               <p className="text-xs text-foreground-muted leading-relaxed max-w-xs">
                 Advanced admission analytics and predictive modeling for JoSAA/CSAB counseling. Built for precision, performance, and student success.
@@ -476,7 +476,7 @@ function App() {
 
           <div className="pt-12 border-t border-border-default flex flex-col md:flex-row items-center justify-between gap-6">
             <div className="text-[10px] font-mono text-foreground-muted uppercase tracking-[0.3em]">
-              © 2026 JOSAA_FORENSICS // BUILT FOR EXCELLENCE
+              © 2026 JOSAABAE // BAYESIAN ANALYSIS ENGINE
             </div>
             <div className="flex items-center gap-4">
                <div className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
@@ -508,7 +508,7 @@ function LegalModal({ type, onClose }: { type: 'privacy' | 'terms' | 'disclaimer
       sections: [
         {
           h: "Data Processing",
-          p: "JoSAA Forensics operates as a client-side analytical tool. All rank processing and simulations are executed locally within your browser's execution context. We do not store, transmit, or collect your rank, gender, or category data on any remote server."
+          p: "JoSAABae operates as a client-side analytical tool. All rank processing and simulations are executed locally within your browser's execution context. We do not store, transmit, or collect your rank, gender, or category data on any remote server."
         },
         {
           h: "Analytical Integrity",
@@ -534,7 +534,7 @@ function LegalModal({ type, onClose }: { type: 'privacy' | 'terms' | 'disclaimer
       sections: [
         {
           h: "Not an Official Tool",
-          p: "JoSAA Forensics is an independent analytical project and is NOT affiliated with the Joint Seat Allocation Authority (JoSAA), Central Seat Allocation Board (CSAB), or any Indian Institute of Technology (IIT)."
+          p: "JoSAABae is an independent analytical project and is NOT affiliated with the Joint Seat Allocation Authority (JoSAA), Central Seat Allocation Board (CSAB), or any Indian Institute of Technology (IIT)."
         },
         {
           h: "Probabilistic Nature",
@@ -729,7 +729,7 @@ function TechnicalSpecsModal({ onClose }: { onClose: () => void }) {
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-accent/10 border border-accent/20">
               <span className="text-[9px] font-mono font-bold text-accent uppercase tracking-widest">Build_v1.0.0-Stable</span>
             </div>
-            <h2 className="text-4xl font-semibold tracking-[-0.03em] text-gradient-white">System_Forensics</h2>
+            <h2 className="text-4xl font-semibold tracking-[-0.03em] text-gradient-white">JoSAABae_Inference</h2>
           </div>
           <button onClick={onClose} className="p-3 hover:bg-surface border border-transparent hover:border-border-default rounded-2xl transition-all active:scale-95">
             <Minus className="w-5 h-5 text-foreground-muted" />
@@ -978,7 +978,7 @@ function ResultCard({ p, viewMode, isExpanded, toggle, userRank, onSimStart, onS
                   const chartData = [
                     ...p.history.map(h => ({
                       year: h.year,
-                      historyClose: h.close,
+                      historyClose: h.close as number | null,
                       projectionClose: null as number | null,
                       ciLow: null as number | null,
                       ciHigh: null as number | null,

@@ -1,6 +1,6 @@
-# 🐍 JoSAA Forensics - Scraper & ML Pipeline
+# 🐍 JoSAABae - JoSAA Bayesian Pipeline
 
-This directory contains the automated data collection and machine learning pipeline used to power JoSAA Forensics.
+This directory contains the automated data collection and machine learning pipeline used to power **JoSAABae**.
 
 ## 🛠 Setup
 

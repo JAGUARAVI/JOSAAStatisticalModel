@@ -1,4 +1,4 @@
-import { linearRegression, linearRegressionLine, standardDeviation } from 'simple-statistics';
+import { standardDeviation } from 'simple-statistics';
 
 export interface Metadata {
   i: string[];
