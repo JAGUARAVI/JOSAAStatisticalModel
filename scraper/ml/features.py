@@ -60,6 +60,34 @@ def _ordered_unique(values: pd.Series, preferred: list[str] | None = None) -> li
     return ordered
 
 
+def _target_year_seat_branches(
+    seats_df: pd.DataFrame | None,
+    target_year: int,
+) -> set[tuple[str, str]] | None:
+    """Return branch pairs that exist in the target-year seat matrix.
+
+    When seat data is available for the requested target year, we use it as the
+    prediction whitelist so the model only exports branches that actually exist
+    in the new seat matrix. If no target-year seat rows are present, return
+    ``None`` and keep the historical prediction universe unchanged.
+    """
+    if seats_df is None or seats_df.empty:
+        return None
+    required = {"year", "institute", "program"}
+    if not required.issubset(seats_df.columns):
+        return None
+
+    years = pd.to_numeric(seats_df["year"], errors="coerce")
+    target_rows = seats_df.loc[years == target_year, ["institute", "program"]].dropna()
+    if target_rows.empty:
+        return None
+
+    return {
+        (normalize_text(inst), normalize_text(prog))
+        for inst, prog in target_rows.itertuples(index=False, name=None)
+    }
+
+
 def build_encoders(df: pd.DataFrame) -> dict[str, dict[str, int]]:
     """Build deterministic encoders saved with the model for inference/export."""
     return {
@@ -117,11 +145,16 @@ def _load_optional_seats(base_dir: str | None = None) -> pd.DataFrame:
     )
 
 
-def _append_prediction_rows(df: pd.DataFrame, target_year: int) -> pd.DataFrame:
+def _append_prediction_rows(
+    df: pd.DataFrame,
+    target_year: int,
+    allowed_branches: set[tuple[str, str]] | None = None,
+) -> pd.DataFrame:
     """Append target-year rows for recently active seat identities and rounds."""
     pred_rows: list[dict[str, Any]] = []
     skipped_discontinued = 0
     skipped_insufficient = 0
+    skipped_not_in_seats = 0
 
     for key, group in df.groupby(GROUP_ROUND_COLS, observed=True):
         group = group.sort_values("year")
@@ -136,6 +169,9 @@ def _append_prediction_rows(df: pd.DataFrame, target_year: int) -> pd.DataFrame:
             continue
 
         inst, prog, quota, category, gender, round_num = key
+        if allowed_branches is not None and (inst, prog) not in allowed_branches:
+            skipped_not_in_seats += 1
+            continue
         last = group.iloc[-1]
         pred_rows.append({
             "institute": inst,
@@ -155,6 +191,8 @@ def _append_prediction_rows(df: pd.DataFrame, target_year: int) -> pd.DataFrame:
             f"  Skipped {skipped_discontinued} discontinued + "
             f"{skipped_insufficient} insufficient-data groups"
         )
+    if skipped_not_in_seats:
+        print(f"  Skipped {skipped_not_in_seats} groups not present in target-year seat data")
 
     if not pred_rows:
         return df
@@ -218,7 +256,8 @@ def engineer_features(
     df["round"] = pd.to_numeric(df["round"], errors="coerce").astype(int)
 
     if target_year is not None:
-        df = _append_prediction_rows(df, target_year)
+        allowed_branches = _target_year_seat_branches(seats_df, target_year)
+        df = _append_prediction_rows(df, target_year, allowed_branches)
 
     df = _merge_seats(df, seats_df)
     min_year = int(df["year"].min())
