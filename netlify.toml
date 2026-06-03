@@ -1,0 +1,27 @@
+[build]
+  base = "app"
+  publish = "dist"
+  command = "npm run build"
+
+# Handle SPA routing (essential for React apps)
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+[[headers]]
+  for = "/data/*.json"
+  [headers.values]
+    Cache-Control = "public, max-age=3600"
+
+
+[build.environment]
+  NODE_VERSION = "20"
+
+# Note on Large Data:
+# Since ranks.json and predictions.json are in .gitignore,
+# they will NOT be available on Netlify by default.
+# You must either:
+# 1. Use Git LFS (Netlify supports this)
+# 2. Upload them to an external CDN and fetch them at runtime
+# 3. Stop ignoring them if they are under 100MB (current size: ~60MB total)

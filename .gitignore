@@ -23,10 +23,6 @@ scraper/*.html
 scraper/ml_backtest_output.log
 scraper/train_final_output.log
 
-# App Large Data Files
-app/public/data/*.json
-!app/public/data/metadata.json
-
 # IDE & OS
 .vscode/
 .idea/
