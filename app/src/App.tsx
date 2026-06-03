@@ -470,9 +470,14 @@ function App() {
               <h4 className="text-[10px] font-mono font-bold text-foreground uppercase tracking-widest">System Status</h4>
               <div className="grid grid-cols-2 gap-4">
                 {[
-                  { label: "Stability", value: "99.9%" },
-                  { label: "Inference", value: "Local" },
-                  { label: "Dataset", value: "2016-25" },
+                  { 
+                    label: "Reliability", 
+                    value: filteredPredictions.length > 0 
+                      ? `${(filteredPredictions.reduce((acc, p) => acc + p.reliability, 0) / filteredPredictions.length * 100).toFixed(1)}%`
+                      : "100%" 
+                  },
+                  { label: "Inference", value: "Neural" },
+                  { label: "Records", value: `${(records.length / 1000).toFixed(1)}k` },
                   { label: "Version", value: "1.0.0" }
                 ].map((stat, i) => (
                   <div key={i} className="space-y-1">
@@ -796,8 +801,8 @@ function RoundViz({ rounds, deepProbMap, isGrid }: { rounds: any[], deepProbMap:
         return (
           <div key={r.round} className="group/round relative flex-1 flex flex-col items-center justify-end h-full">
             {/* Tooltip */}
-            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-4 opacity-0 group-hover/round:opacity-100 transition-all duration-300 pointer-events-none translate-y-2 group-hover/round:translate-y-0 z-50">
-              <div className="glass-premium px-5 py-3 rounded-2xl border border-white/10 shadow-[0_10px_40px_rgba(0,0,0,0.8)] flex flex-col items-center min-w-[120px]">
+            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-4 opacity-0 group-hover/round:opacity-100 transition-all duration-300 pointer-events-none translate-y-2 group-hover/round:translate-y-0 z-[60]">
+              <div className="bg-background-elevated/95 backdrop-blur-2xl px-5 py-3 rounded-2xl border border-white/20 shadow-[0_20px_50px_rgba(0,0,0,0.9)] flex flex-col items-center min-w-[140px]">
                 <div className="w-full flex justify-between items-center mb-2 pb-2 border-b border-white/5">
                   <span className="text-[8px] font-mono text-foreground-muted uppercase tracking-widest">R0{r.round}</span>
                   <div className={`w-1.5 h-1.5 rounded-full ${prob >= 50 ? 'bg-emerald-500' : 'bg-rose-500'} shadow-[0_0_8px_currentColor]`} />
@@ -813,7 +818,7 @@ function RoundViz({ rounds, deepProbMap, isGrid }: { rounds: any[], deepProbMap:
                   </div>
                 )}
               </div>
-              <div className="w-3 h-3 bg-background-elevated border-b border-r border-white/10 rotate-45 mx-auto -mt-1.5" />
+              <div className="w-3 h-3 bg-background-elevated/95 border-b border-r border-white/20 rotate-45 mx-auto -mt-1.5" />
             </div>
 
             {/* Bar */}
@@ -892,10 +897,10 @@ function ResultCard({ p, viewMode, isExpanded, toggle, userRank, onSimStart, onS
   return (
     <div
       ref={cardRef}
-      className={`glass rounded-3xl overflow-hidden transition-all duration-500 group/card relative ${isExpanded ? 'border-accent/40 bg-background-elevated ring-1 ring-accent/10 shadow-[0_20px_100px_rgba(0,0,0,0.6)] z-20' : 'border-glow glow-on-hover hover:border-border-hover hover:bg-surface hover:-translate-y-1'}`}
+      className={`glass rounded-3xl transition-all duration-500 group/card relative ${viewMode === 'grid' && isExpanded ? 'md:col-span-2' : ''} ${isExpanded ? 'border-accent/40 bg-background-elevated ring-1 ring-accent/10 shadow-[0_20px_100px_rgba(0,0,0,0.6)] z-20' : 'border-glow glow-on-hover hover:border-border-hover hover:bg-surface hover:-translate-y-1'}`}
     >
       {simulating && (
-        <div className="absolute inset-0 z-0 pointer-events-none overflow-hidden opacity-50">
+        <div className="absolute inset-0 z-0 pointer-events-none overflow-hidden opacity-50 rounded-3xl">
           <div className="w-full h-1/2 bg-gradient-to-b from-transparent via-accent/10 to-transparent animate-scan" />
         </div>
       )}
@@ -1143,9 +1148,17 @@ function ResultCard({ p, viewMode, isExpanded, toggle, userRank, onSimStart, onS
                   </div>
                 </div>
 
-                {distribution && (
+                 {distribution && (
                   <div className="space-y-4 pt-4">
-                    <span className="text-[10px] font-mono text-foreground-muted uppercase tracking-widest">Monte Carlo Distribution</span>
+                    <div className="flex justify-between items-center">
+                      <span className="text-[10px] font-mono text-foreground-muted uppercase tracking-widest">Monte Carlo Distribution</span>
+                      <div className="group/info relative">
+                        <Info className="w-3 h-3 text-foreground-muted cursor-help" />
+                        <div className="absolute bottom-full right-0 mb-2 w-56 p-4 bg-background-elevated/95 backdrop-blur-2xl border border-white/20 rounded-2xl opacity-0 group-hover/info:opacity-100 transition-opacity z-[70] text-[10px] text-foreground-muted leading-relaxed shadow-[0_20px_50px_rgba(0,0,0,0.9)]">
+                          Visualizes 50,000 simulated outcomes. The peak represents the most likely closing rank (Mode), while the horizontal spread indicates the predicted volatility for this specific branch.
+                        </div>
+                      </div>
+                    </div>
                     <DistributionChart data={distribution} userRank={userRank} />
                   </div>
                 )}
