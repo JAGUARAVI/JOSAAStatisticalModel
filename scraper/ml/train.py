@@ -23,6 +23,7 @@ from scipy import stats
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from cleaner import load_all_data
+from pymc.backends.base import MultiTrace
 from ml.features import engineer_features, get_model_feature_columns
 
 
@@ -314,6 +315,207 @@ def _fit_simple_advi(
     )
 
 
+class _NutsCheckpointTracker:
+    """Capture periodic posterior checkpoints from a single long NUTS run."""
+
+    def __init__(
+        self,
+        *,
+        model: Any,
+        val_df: pd.DataFrame,
+        feature_cols: list[str],
+        feature_means: dict[str, float],
+        feature_stds: dict[str, float],
+        encoders: dict[str, dict[str, int]],
+        tune: int,
+        draws: int,
+        checkpoint_draws: int,
+        checkpoint_dir: str,
+        persist_checkpoints: bool = True,
+        chains: int = 1,
+    ) -> None:
+        self.model = model
+        self.val_df = val_df
+        self.feature_cols = feature_cols
+        self.feature_means = feature_means
+        self.feature_stds = feature_stds
+        self.encoders = encoders
+        self.tune = tune
+        self.draws = draws
+        self.checkpoint_draws = max(1, checkpoint_draws)
+        self.checkpoint_dir = checkpoint_dir
+        self.persist_checkpoints = persist_checkpoints
+        self.chains = chains
+        self.latest_traces: dict[int, Any] = {}
+        self.posterior_counts: dict[int, int] = {chain: 0 for chain in range(chains)}
+        self.next_checkpoint = self.checkpoint_draws
+        self.candidates: list[dict[str, Any]] = []
+        self.recorded_targets: set[int] = set()
+        self.best_idata: Any | None = None
+        self.best_metrics: dict[str, float | int] | None = None
+        self.best_path: str | None = None
+        self.best_target: int = 0
+
+    def __call__(self, trace: Any, draw: Any) -> None:
+        self.latest_traces[draw.chain] = trace
+        if draw.tuning:
+            return
+
+        posterior_count = max(0, int(draw.draw_idx) + 1 - self.tune)
+        self.posterior_counts[draw.chain] = posterior_count
+
+        while min(self.posterior_counts.values()) >= self.next_checkpoint:
+            self._snapshot(self.next_checkpoint)
+            self.next_checkpoint += self.checkpoint_draws
+
+    def _snapshot(self, target_draws: int) -> None:
+        if target_draws in self.recorded_targets:
+            return
+        chains: list[Any] = []
+        for chain in range(self.chains):
+            chain_trace = self.latest_traces.get(chain)
+            if chain_trace is None or len(chain_trace) < self.tune + target_draws:
+                return
+            chains.append(chain_trace[self.tune : self.tune + target_draws])
+
+        if not chains:
+            return
+
+        import pymc as pm
+
+        with self.model:
+            checkpoint_trace = MultiTrace(chains)
+            checkpoint_idata = pm.to_inference_data(
+                checkpoint_trace,
+                model=self.model,
+                save_warmup=False,
+            )
+
+        fit = BayesianFit(
+            idata=checkpoint_idata,
+            feature_cols=self.feature_cols,
+            feature_means=self.feature_means,
+            feature_stds=self.feature_stds,
+            encoders=self.encoders,
+            fit_method="nuts-checkpointed",
+        )
+        metrics = _validation_metrics(fit, self.val_df)
+
+        candidate_path = os.path.join(self.checkpoint_dir, f"nuts_step_{target_draws:05d}.nc")
+        if self.persist_checkpoints:
+            candidate_path = _save_inferencedata(candidate_path, checkpoint_idata)
+
+        candidate = {
+            "draws": target_draws,
+            "path": candidate_path,
+            "validation_n": metrics["n"],
+            "validation_mae": metrics["mae"],
+            "validation_rmse": metrics["rmse"],
+        }
+        self.recorded_targets.add(target_draws)
+        self.candidates.append(candidate)
+        print(
+            f"    checkpoint {target_draws:>4} draws: "
+            f"val MAE={metrics['mae']:.2f}, RMSE={metrics['rmse']:.2f}, "
+            f"saved {os.path.basename(candidate_path)}"
+        )
+
+        if self.best_metrics is None or metrics["mae"] < self.best_metrics["mae"]:
+            self.best_idata = checkpoint_idata
+            self.best_metrics = metrics
+            self.best_path = candidate_path
+            self.best_target = target_draws
+
+
+def _fit_checkpointed_nuts(
+    model: Any,
+    *,
+    train_df: pd.DataFrame,
+    val_df: pd.DataFrame,
+    feature_cols: list[str],
+    feature_means: dict[str, float],
+    feature_stds: dict[str, float],
+    encoders: dict[str, dict[str, int]],
+    draws: int,
+    tune: int,
+    chains: int,
+    checkpoint_draws: int,
+    checkpoint_dir: str,
+) -> BayesianFit:
+    import pymc as pm
+
+    os.makedirs(checkpoint_dir, exist_ok=True)
+    checkpoint_draws = max(1, min(checkpoint_draws, draws))
+    tracker = _NutsCheckpointTracker(
+        model=model,
+        val_df=val_df,
+        feature_cols=feature_cols,
+        feature_means=feature_means,
+        feature_stds=feature_stds,
+        encoders=encoders,
+        tune=tune,
+        draws=draws,
+        checkpoint_draws=checkpoint_draws,
+        checkpoint_dir=checkpoint_dir,
+        chains=chains,
+    )
+
+    print(
+        f"  Sampling NUTS posterior in checkpointed mode "
+        f"({chains} chains, {draws} draws, {tune} tune, step={checkpoint_draws})..."
+    )
+    with model:
+        idata = pm.sample(
+            draws=draws,
+            tune=tune,
+            chains=chains,
+            init="advi+adapt_diag",
+            target_accept=0.95,
+            random_seed=RANDOM_SEED,
+            return_inferencedata=True,
+            callback=tracker,
+        )
+
+    if tracker.best_target < draws:
+        tracker._snapshot(draws)
+
+    final_idata = tracker.best_idata or idata
+    fit_method = "nuts-checkpointed" if tracker.best_idata is not None else "nuts"
+    validation_mae = None if tracker.best_metrics is None else float(tracker.best_metrics["mae"])
+    validation_rmse = None if tracker.best_metrics is None else float(tracker.best_metrics["rmse"])
+
+    _write_json(os.path.join(checkpoint_dir, "nuts_manifest.json"), {
+        "fit_method": fit_method,
+        "draws": draws,
+        "tune": tune,
+        "checkpoint_draws": checkpoint_draws,
+        "train_rows": int(len(train_df)),
+        "validation_rows": int(len(val_df)),
+        "candidates": tracker.candidates,
+        "best": {
+            "draws": tracker.best_target,
+            "path": tracker.best_path,
+            "validation_mae": None if tracker.best_metrics is None else tracker.best_metrics["mae"],
+            "validation_rmse": None if tracker.best_metrics is None else tracker.best_metrics["rmse"],
+        },
+    })
+
+    return BayesianFit(
+        idata=final_idata,
+        feature_cols=feature_cols,
+        feature_means=feature_means,
+        feature_stds=feature_stds,
+        encoders=encoders,
+        fit_method=fit_method,
+        validation_year=None,
+        validation_mae=validation_mae,
+        validation_rmse=validation_rmse,
+        checkpoint_steps=checkpoint_draws,
+        checkpoint_path=tracker.best_path,
+        checkpoint_count=len(tracker.candidates),
+    )
+
+
 def build_josaa_model(
     train_df: pd.DataFrame,
     x_train: np.ndarray,
@@ -429,11 +631,13 @@ def train_model(
     *,
     quick: bool = False,
     checkpoint_advi: bool = False,
+    checkpoint_nuts: bool = True,
     draws: int = 1000,
     tune: int = 1000,
     chains: int = 2,
     advi_steps: int = 8000,
     checkpoint_steps: int = 2000,
+    checkpoint_draws: int = 250,
     validation_year: int | None = None,
     base_dir: str | None = None,
 ) -> BayesianFit:
@@ -450,7 +654,7 @@ def train_model(
     val_df = pd.DataFrame()
     validation_label = None
     validation_year_used: int | None = None
-    if checkpoint_advi or quick:
+    if checkpoint_advi or quick or checkpoint_nuts:
         train_df, val_df, validation_label, validation_year_used = _split_train_validation(
             observed_df,
             target_year=int(df_features["year"].max()),
@@ -488,6 +692,22 @@ def train_model(
             draws=draws,
             advi_steps=advi_steps,
             checkpoint_steps=checkpoint_steps,
+            checkpoint_dir=checkpoint_root,
+        )
+    elif checkpoint_nuts:
+        checkpoint_root = _checkpoint_dir(base_dir or os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        fit = _fit_checkpointed_nuts(
+            model,
+            train_df=train_df,
+            val_df=val_df,
+            feature_cols=feature_cols,
+            feature_means=feature_means,
+            feature_stds=feature_stds,
+            encoders=encoders,
+            draws=draws,
+            tune=tune,
+            chains=chains,
+            checkpoint_draws=checkpoint_draws,
             checkpoint_dir=checkpoint_root,
         )
     else:
@@ -799,6 +1019,18 @@ def main() -> None:
         default=2000,
         help="ADVI steps between saved checkpoints",
     )
+    parser.add_argument(
+        "--checkpoint-nuts",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Checkpoint the full NUTS path and keep the best posterior snapshot",
+    )
+    parser.add_argument(
+        "--checkpoint-draws",
+        type=int,
+        default=250,
+        help="Posterior draws between NUTS checkpoints",
+    )
     parser.add_argument("--quick", action="store_true", help="Use ADVI for a fast smoke-test posterior")
     parser.add_argument("--draws", type=int, default=1000, help="Posterior draws")
     parser.add_argument("--tune", type=int, default=1000, help="NUTS tuning steps")
@@ -833,11 +1065,13 @@ def main() -> None:
         df_features,
         quick=args.quick,
         checkpoint_advi=args.checkpoint_advi,
+        checkpoint_nuts=args.checkpoint_nuts,
         draws=args.draws,
         tune=args.tune,
         chains=args.chains,
         advi_steps=args.advi_steps,
         checkpoint_steps=args.checkpoint_steps,
+        checkpoint_draws=args.checkpoint_draws,
         validation_year=args.validation_year,
         base_dir=base_dir,
     )

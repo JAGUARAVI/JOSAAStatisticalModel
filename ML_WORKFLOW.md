@@ -53,13 +53,16 @@ uv run python -m ml.train --quick
 # Checkpointed ADVI with validation-based model selection
 uv run python -m ml.train --checkpoint-advi
 
+# Checkpointed full NUTS run with validation-based checkpoint selection
+uv run python -m ml.train
+
 # Full posterior fit
 uv run python -m ml.train
 ```
 **Pipeline Details**:
 - **Feature Extraction**: Computes lag features, rolling statistics, opening-rank signals, sparse-data indicators, and optional seat-count features (`ml/features.py`).
 - **Bayesian Modeling**: Fits global, tier, institute, program, quota, category, gender, and round effects with partial pooling.
-- **Checkpointing**: ADVI runs can save intermediate checkpoints under `scraper/ml/checkpoints/` and select the best one using a held-out historical validation split.
+- **Checkpointing**: ADVI and full NUTS runs can save intermediate checkpoints under `scraper/ml/checkpoints/` and select the best one using a held-out historical validation split.
 - **Posterior Export**: Converts posterior predictive samples into median ranks, uncertainty, and 90% credible intervals.
 - **Output**: Generates `app/public/data/predictions.json`.
 
