@@ -1,0 +1,41 @@
+# Node
+node_modules/
+dist/
+dist-ssr/
+*.local
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+env/
+venv/
+ENV/
+*.pyo
+*.log
+
+# Scraper Data & Logs
+scraper/raw_data/
+scraper/catboost_info/
+scraper/*.log
+scraper/*.html
+scraper/ml_backtest_output.log
+scraper/train_final_output.log
+
+# App Large Data Files
+app/public/data/*.json
+!app/public/data/metadata.json
+
+# IDE & OS
+.vscode/
+.idea/
+.DS_Store
+*.swp
+*.swo
+
+# Project specific
+temp/
+tmp/
+.temp/
+.tmp/
